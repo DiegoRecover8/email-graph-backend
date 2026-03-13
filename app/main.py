@@ -54,9 +54,15 @@ def health() -> HealthModel:
     )
 
 
-@app.get("/graph", response_model=GraphModel)
-def get_graph() -> GraphModel:
-    return GraphModel(**store.get_graph())
+@app.get("/graph")
+def get_graph(min_weight: float = 1.0):
+    filtered_edges = [e for e in store.edges if e["weight"] >= min_weight]
+    valid_node_ids = set()
+    for e in filtered_edges:
+        valid_node_ids.add(e["source"])
+        valid_node_ids.add(e["target"])
+    filtered_nodes = [n for n in store.nodes if n["id"] in valid_node_ids]
+    return {"nodes": filtered_nodes, "edges": filtered_edges}
 
 
 @app.get("/nodes", response_model=List[NodeModel])
