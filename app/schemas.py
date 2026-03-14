@@ -13,6 +13,11 @@ class MessageModel(BaseModel):
     body: Optional[str] = None
 
 
+class RelatedMessageModel(MessageModel):
+    edge_id: str
+    interlocutor: str
+
+
 class NeighborModel(BaseModel):
     id: str
     label: str
@@ -28,6 +33,7 @@ class NodeModel(BaseModel):
 
 class NodeDetailModel(NodeModel):
     neighbors: List[NeighborModel] = Field(default_factory=list)
+    related_messages: List[RelatedMessageModel] = Field(default_factory=list)
 
 
 class EdgeModel(BaseModel):

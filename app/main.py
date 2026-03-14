@@ -31,14 +31,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Email Graph API",
-    version="1.0.0",
+    version="1.1.0",
     description="API REST para visualizar un grafo social de correos electrónicos.",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Reemplaza por tu dominio si luego quieres restringirlo
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -57,10 +57,12 @@ def health() -> HealthModel:
 @app.get("/graph")
 def get_graph(min_weight: float = 1.0):
     filtered_edges = [e for e in store.edges if e["weight"] >= min_weight]
+
     valid_node_ids = set()
     for e in filtered_edges:
         valid_node_ids.add(e["source"])
         valid_node_ids.add(e["target"])
+
     filtered_nodes = [n for n in store.nodes if n["id"] in valid_node_ids]
     return {"nodes": filtered_nodes, "edges": filtered_edges}
 
@@ -71,8 +73,11 @@ def get_nodes() -> List[NodeModel]:
 
 
 @app.get("/nodes/{node_id}", response_model=NodeDetailModel)
-def get_node(node_id: str) -> NodeDetailModel:
-    node = store.get_node(node_id)
+def get_node(
+    node_id: str,
+    max_messages: int = Query(20, ge=1, le=100),
+) -> NodeDetailModel:
+    node = store.get_node(node_id, max_messages=max_messages)
     if node is None:
         raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found")
     return NodeDetailModel(**node)
@@ -100,5 +105,7 @@ def get_edge(edge_id: str) -> EdgeDetailModel:
 
 
 @app.get("/search/nodes", response_model=List[NodeModel])
-def search_nodes(q: str = Query(..., min_length=1, description="Texto a buscar")) -> List[NodeModel]:
+def search_nodes(
+    q: str = Query(..., min_length=1, description="Texto a buscar")
+) -> List[NodeModel]:
     return [NodeModel(**node) for node in store.search_nodes(q)]

@@ -19,6 +19,7 @@ class GraphDataStore:
         self.nodes_by_id: Dict[str, Dict[str, Any]] = {}
         self.edges_by_id: Dict[str, Dict[str, Any]] = {}
         self.neighbors_by_node: Dict[str, List[Dict[str, Any]]] = {}
+        self.edges_by_node: Dict[str, List[Dict[str, Any]]] = {}
 
     def load(self) -> None:
         if not self.data_path.exists():
@@ -33,6 +34,7 @@ class GraphDataStore:
         self.nodes_by_id = {str(node["id"]): node for node in self.nodes}
         self.edges_by_id = {str(edge["id"]): edge for edge in self.edges}
         self.neighbors_by_node = {str(node["id"]): [] for node in self.nodes}
+        self.edges_by_node = {str(node["id"]): [] for node in self.nodes}
 
         for edge in self.edges:
             source = str(edge["source"])
@@ -49,6 +51,9 @@ class GraphDataStore:
                 {"id": source, "label": source_label, "weight": weight}
             )
 
+            self.edges_by_node.setdefault(source, []).append(edge)
+            self.edges_by_node.setdefault(target, []).append(edge)
+
         for node_id, neighbors in self.neighbors_by_node.items():
             neighbors.sort(key=lambda n: (-n["weight"], n["label"].lower()))
 
@@ -61,13 +66,54 @@ class GraphDataStore:
     def get_edges(self) -> List[Dict[str, Any]]:
         return self.edges
 
-    def get_node(self, node_id: str) -> Optional[Dict[str, Any]]:
-        node = self.nodes_by_id.get(str(node_id))
+    def get_node(self, node_id: str, max_messages: int = 20) -> Optional[Dict[str, Any]]:
+        node_id = str(node_id)
+        node = self.nodes_by_id.get(node_id)
         if node is None:
             return None
 
         enriched = dict(node)
-        enriched["neighbors"] = self.neighbors_by_node.get(str(node_id), [])
+        enriched["neighbors"] = self.neighbors_by_node.get(node_id, [])
+
+        node_label = str(node.get("label", "")).strip().lower()
+        related_messages: List[Dict[str, Any]] = []
+
+        for edge in self.edges_by_node.get(node_id, []):
+            source_id = str(edge["source"])
+            target_id = str(edge["target"])
+
+            other_id = target_id if source_id == node_id else source_id
+            other_label = self.nodes_by_id.get(other_id, {}).get("label", other_id)
+
+            for msg in edge.get("messages", []):
+                sender = str(msg.get("sender", "")).strip().lower()
+                recipient = str(msg.get("recipient", "")).strip().lower()
+
+                if sender == node_label:
+                    interlocutor = other_label
+                elif recipient == node_label:
+                    interlocutor = other_label
+                else:
+                    interlocutor = other_label
+
+                related_messages.append(
+                    {
+                        "edge_id": edge["id"],
+                        "timestamp": msg.get("timestamp"),
+                        "subject": msg.get("subject"),
+                        "sender": msg.get("sender"),
+                        "recipient": msg.get("recipient"),
+                        "body": msg.get("body"),
+                        "interlocutor": interlocutor,
+                    }
+                )
+
+        related_messages.sort(
+            key=lambda m: str(m.get("timestamp") or ""),
+            reverse=True,
+        )
+
+        enriched["related_messages"] = related_messages[:max_messages]
         return enriched
 
     def get_edge(self, edge_id: str) -> Optional[Dict[str, Any]]:
