@@ -77,6 +77,7 @@ class GraphDataStore:
 
         node_label = str(node.get("label", "")).strip().lower()
         related_messages: List[Dict[str, Any]] = []
+        seen_messages = set()
 
         for edge in self.edges_by_node.get(node_id, []):
             source_id = str(edge["source"])
@@ -86,25 +87,34 @@ class GraphDataStore:
             other_label = self.nodes_by_id.get(other_id, {}).get("label", other_id)
 
             for msg in edge.get("messages", []):
-                sender = str(msg.get("sender", "")).strip().lower()
-                recipient = str(msg.get("recipient", "")).strip().lower()
+                sender = str(msg.get("sender", "")).strip()
+                recipient = str(msg.get("recipient", "")).strip()
+                timestamp = msg.get("timestamp")
+                subject = msg.get("subject")
+                body = msg.get("body")
 
-                if sender == node_label:
-                    interlocutor = other_label
-                elif recipient == node_label:
-                    interlocutor = other_label
-                else:
-                    interlocutor = other_label
+                dedupe_key = (
+                    edge["id"],
+                    str(timestamp or "").strip(),
+                    str(subject or "").strip(),
+                    sender.lower(),
+                    recipient.lower(),
+                    str(body or "").strip(),
+                )
+
+                if dedupe_key in seen_messages:
+                    continue
+                seen_messages.add(dedupe_key)
 
                 related_messages.append(
                     {
                         "edge_id": edge["id"],
-                        "timestamp": msg.get("timestamp"),
-                        "subject": msg.get("subject"),
-                        "sender": msg.get("sender"),
-                        "recipient": msg.get("recipient"),
-                        "body": msg.get("body"),
-                        "interlocutor": interlocutor,
+                        "timestamp": timestamp,
+                        "subject": subject,
+                        "sender": sender,
+                        "recipient": recipient,
+                        "body": body,
+                        "interlocutor": other_label,
                     }
                 )
 
@@ -117,7 +127,30 @@ class GraphDataStore:
         return enriched
 
     def get_edge(self, edge_id: str) -> Optional[Dict[str, Any]]:
-        return self.edges_by_id.get(str(edge_id))
+        edge = self.edges_by_id.get(str(edge_id))
+        if edge is None:
+            return None
+
+        deduped_edge = dict(edge)
+        seen_messages = set()
+        deduped_messages = []
+
+        for msg in edge.get("messages", []):
+            key = (
+                str(msg.get("timestamp") or "").strip(),
+                str(msg.get("subject") or "").strip(),
+                str(msg.get("sender") or "").strip().lower(),
+                str(msg.get("recipient") or "").strip().lower(),
+                str(msg.get("body") or "").strip(),
+            )
+
+            if key in seen_messages:
+                continue
+            seen_messages.add(key)
+            deduped_messages.append(msg)
+
+        deduped_edge["messages"] = deduped_messages
+        return deduped_edge
 
     def search_nodes(self, query: str) -> List[Dict[str, Any]]:
         q = query.strip().lower()
